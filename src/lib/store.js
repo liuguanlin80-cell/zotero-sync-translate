@@ -10,7 +10,7 @@ class Store {
   constructor(Zotero, env) {
     this.Z = Zotero; this.io = env.IOUtils; this.env = env;
     this.path = safeGet(() => env.PathUtils.join(Zotero.DataDirectory.dir, 'sync-translate.json'), '');
-    this.data = { v: 1, align: {}, gloss: {} };
+    this.data = { v: 1, align: {}, gloss: {}, ratio: {} };
     this.dirty = false; this.timer = null; this.glossSize = 0;
     this.logPath = safeGet(() => env.PathUtils.join(Zotero.DataDirectory.dir, 'sync-translate-log.json'), '');
     this.logData = null; this.logTimer = null;
@@ -19,7 +19,7 @@ class Store {
     if (!this.io || !this.path) return;
     try {
       const d = await this.io.readJSON(this.path);
-      if (d?.v === 1) this.data = { v: 1, align: d.align || {}, gloss: d.gloss || {} };
+      if (d?.v === 1) this.data = { v: 1, align: d.align || {}, gloss: d.gloss || {}, ratio: d.ratio || {} };
     } catch (_) {}
     this.glossSize = Object.values(this.data.gloss).reduce((n, table) => n + Object.keys(table).length, 0);
   }
@@ -54,6 +54,14 @@ class Store {
       keys.sort((x, y) => this.data.align[x].t - this.data.align[y].t);
       for (const k of keys.slice(0, 500)) delete this.data.align[k];
     }
+    this.touch();
+  }
+  /** Typical translation/source length ratio seen for a language pair; steadies sentence pairing. */
+  ratio(lang) { return this.data.ratio[lang] || null; }
+  learnRatio(lang, value) {
+    if (!(value > 0.02 && value < 50)) return;
+    const old = this.data.ratio[lang];
+    this.data.ratio[lang] = old ? old * 0.8 + value * 0.2 : value;
     this.touch();
   }
   learn(lang, source, target) {

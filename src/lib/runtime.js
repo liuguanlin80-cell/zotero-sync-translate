@@ -22,6 +22,7 @@ const TEXT = {
   cap: ['Daily cap reached', '已达今日上限'],
   nogeo: ['No PDF coords', '无 PDF 坐标'],
   nomark: ['Highlight failed', '高亮失败'],
+  none: ['Not in the selection', '所选原文之外'],
   retry: ['Retry', '重试'],
   button: ['Sync', '对齐'],
   toggle: ['Pause / resume', '暂停 / 恢复']
@@ -258,10 +259,12 @@ class Companion {
     if (task.raw.length > 20000 || task.result.length > 20000) return null;
     if (state.subs.has(canonical(task.raw).value)) return null;
     p = { key, state, raw: task.raw, result: task.result, langfrom: task.langfrom, langto: task.langto, service: task.service,
-      groups: A.segment(task.raw, task.result), sTokens: A.tokenize(task.raw, task.langfrom),
+      groups: A.segment(task.raw, task.result, this.store.ratio(task.langfrom + '>' + task.langto)), sTokens: A.tokenize(task.raw, task.langfrom),
       tTokens: A.tokenize(task.result, task.langto), n: letterCount(task.raw),
       geometry: null, inverse: null, pages: null, hit: null, used: false, dead: false };
     const lang = p.langfrom + '>' + p.langto;
+    if (p.groups.ratio) this.store.learnRatio(lang, p.groups.ratio);
+    this.trace('passage', p.groups.stats || { pairs: p.groups.length });
     for (const g of p.groups) {
       const cached = this.store.getAlign(groupKey(p, g));
       if (cached) { applyLinks(g, cached); continue; }
@@ -529,7 +532,11 @@ class Companion {
     const p = record.passage, state = p.state;
     this.geo(p);
     const r = A.resolve(p, 't', a, b);
-    if (!r.items.length) { this.clearHighlights(); return; }
+    if (!r.items.length) {
+      this.clearHighlights();
+      if (letterCount(p.result, a, b)) record.indicator.set(this.t('none'));
+      return;
+    }
     this.want(p, r.need, () => this.note(record, r.need));
     if (!this.drag && b - a <= 12) for (const m of r.miss) this.aligner.lookup(p, m.g, 't', m.lo, m.hi, () => this.refresh(p));
     this.note(record, [...r.need, ...r.miss.map(m => m.g)]);

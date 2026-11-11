@@ -200,6 +200,47 @@ test('word-level pairs still give a continuous range', () => {
   assert.deepStrictEqual(shown(p, select(p, '屏障功能')), ['in barrier function']);
 });
 
+// The translation runs past the selected source (the model translated more than it was given).
+const EN4 = 'The gut barrier is a key defense against bacterial invasion and is usually thought to fail slowly. ' +
+  'Here, we show a fast mechanism in which the factor ABC1 drives rapid loss of barrier function without new gene expression. ' +
+  'Using a 3D culture device and a mouse model, we show that bacteria move ABC1 to the nucleus with later shift of actin from the membrane to the';
+const ZH4 = '肠道屏障是抵御细菌入侵的关键防线，通常认为其失效较为缓慢。在此，我们揭示了一种快速机制，即因子ABC1在不依赖新基因表达的情况下驱动屏障功能迅速丧失。' +
+  '利用3D培养装置和小鼠模型，我们证明细菌使ABC1进入细胞核，随后actin从细胞膜转移至细胞质，导致渗漏增加。此外，刺激增强了ABC1与DEF2的结合并促进其Tyr100磷酸化。' +
+  '仅限于细胞核的ABC1表达即足以诱导屏障失效。这些发现确立了一种此前未被认识的快速反应机制。';
+
+test('a translation longer than the selected source: extra sentences stay unpaired', () => {
+  const p = passage(EN4, ZH4);
+  assert.strictEqual(p.groups.length, 3);
+  assert.deepStrictEqual(p.groups.map(g => ZH4.slice(g.t[0], g.t[0] + 2)), ['肠道', '在此', '利用']);
+  assert.deepStrictEqual(p.groups.map(g => EN4.slice(g.s[0], g.s[0] + 5)), ['The g', 'Here,', 'Using']);
+  assert.strictEqual(p.groups.ratio, undefined, 'a lopsided passage does not feed the length ratio');
+});
+
+test('selecting in the second sentence lands in the second sentence, not the first', () => {
+  const p = passage(EN4, ZH4);
+  const r = select(p, '即因子ABC1在不依赖新基因表达的情况下驱动屏障功能迅速丧失');
+  assert.strictEqual(r.items.length, 1);
+  assert(sText(p, r.items)[0].startsWith('Here, we show'));
+});
+
+test('selecting translation that has no source gives nothing', () => {
+  const p = passage(EN4, ZH4);
+  assert.strictEqual(select(p, '仅限于细胞核的ABC1表达').items.length, 0);
+  assert.strictEqual(select(p, '这些发现').items.length, 0);
+});
+
+test('plain prose without names or numbers: the usual length ratio decides', () => {
+  const groups = A.pairSentences('The cat sat quietly on the warm mat by the door.', '那只猫安静地坐在门边温暖的垫子上。它看起来很满足。窗外正在下雨。');
+  assert.strictEqual(groups.length, 1);
+  assert.strictEqual(groups[0].t[1], 17);
+});
+
+test('an evenly paired passage reports its length ratio', () => {
+  const p = passage('We measured XBP1 expression. It was increased in all samples.', '我们检测了XBP1的表达。它在所有样本中均升高。');
+  assert.strictEqual(p.groups.length, 2);
+  assert(p.groups.ratio > 0.2 && p.groups.ratio < 0.6);
+});
+
 test('single-word reply: exact match, nearest occurrence, and "none"', () => {
   const text = '细胞经过处理，随后细胞死亡。';
   assert.deepStrictEqual(A.verifyLookup(text, '处理', 0), [[4, 6]]);

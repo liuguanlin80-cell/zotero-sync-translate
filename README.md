@@ -56,6 +56,7 @@ Zotero 插件。把 [Translate for Zotero](https://github.com/windingwind/zotero
 ## 限制
 
 - 只支持 PDF。
+- 译文超出所选原文的部分没有对应，划选时提示“所选原文之外”。TFZ 开了“附带论文上下文”时，模型可能把整段摘要都翻出来。
 - TFZ 侧栏开启公式渲染时，不能从译文找原文。
 - 弹窗顶部那一排颜色是 Zotero 自带的，点它会关闭翻译窗口。
 - Jev 和自定义接口两条路线未用真实服务验证。

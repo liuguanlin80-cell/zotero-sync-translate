@@ -83,75 +83,71 @@ function anchorLinks(raw, result, g) {
   return links;
 }
 
-function pairSentences(raw, result) {
+/** Pairs sentences of the source with sentences of the translation. Either side may hold sentences the
+ * other lacks (a translation that runs past the selection, a truncated reply); those stay unpaired.
+ * prior: expected translation/source length ratio for this language pair, when known. */
+function pairSentences(raw, result, prior) {
   const S = sentences(raw), T = sentences(result), ns = S.length, nt = T.length;
   const whole = [{ s: [0, raw.length], t: [0, result.length] }];
-  if (!letterCount(raw) || !letterCount(result)) return whole;
-  if (ns === 1 || nt === 1) return [{ s: [S[0][0], S[ns - 1][1]], t: [T[0][0], T[nt - 1][1]] }];
+  const totS = letterCount(raw), totT = letterCount(result);
+  if (!totS || !totT) return whole;
   const sl = S.map(r => Math.max(1, letterCount(raw, r[0], r[1])));
   const tl = T.map(r => Math.max(1, letterCount(result, r[0], r[1])));
-  const totS = sl.reduce((a, b) => a + b, 0), totT = tl.reduce((a, b) => a + b, 0);
-  const cjk = isCJK(result), anchors = [], count = new Map();
-  const found = [...result.matchAll(TERM)];
-  for (const m of found) count.set(m[0], (count.get(m[0]) || 0) + 1);
-  for (const m of found) {
-    const v = m[0];
-    if (count.get(v) !== 1 || /^\d+$/.test(v) || !isAnchorTerm(v, cjk)) continue;
-    const occ = occurrences(raw, 0, raw.length, v);
-    if (occ.length !== 1) continue;
-    const si = S.findIndex(r => occ[0] >= r[0] && occ[0] < r[1]);
-    const ti = T.findIndex(r => m.index >= r[0] && m.index < r[1]);
-    if (si >= 0 && ti >= 0) anchors.push([si, ti]);
-  }
+  const cjk = isCJK(result);
+  // Names and numbers the translation keeps as they are, counted per sentence on both sides.
+  const vocab = [...new Set([...result.matchAll(TERM)].map(m => m[0]).filter(v => isAnchorTerm(v, cjk)))];
+  const count = (text, r) => vocab.map(v => occurrences(text, r[0], r[1], v).length);
+  const sc = S.map(r => count(raw, r)), tc = T.map(r => count(result, r));
   const sum = (arr, i, n) => { let v = 0; for (let k = 0; k < n; k++) v += arr[i + k]; return v; };
-  const cost = (i, sn, j, tn, penalty) => {
-    if (!sn || !tn) return penalty;
-    let c = Math.abs(Math.log((sum(sl, i, sn) / totS + 1e-5) / (sum(tl, j, tn) / totT + 1e-5))) + penalty;
-    let inside = 0, outside = 0;
-    for (const [si, ti] of anchors) {
-      if (ti < j || ti >= j + tn) continue;
-      if (si >= i && si < i + sn) inside++; else outside++;
+  const terms = (i, sn, j, tn) => {
+    let miss = 0, hit = 0;
+    for (let v = 0; v < vocab.length; v++) {
+      let a = 0, b = 0;
+      for (let k = 0; k < sn; k++) a += sc[i + k][v];
+      for (let k = 0; k < tn; k++) b += tc[j + k][v];
+      miss += Math.abs(a - b); hit += Math.min(a, b);
     }
-    return c - Math.min(1.45, inside * 0.62) + Math.min(1.35, outside * 0.54);
+    return Math.min(1.6, 0.45 * miss) - Math.min(1.2, 0.35 * hit);
   };
-  const moves = [[1, 1, 0], [1, 2, 0.34], [2, 1, 0.34], [1, 0, 1.65], [0, 1, 1.65]];
-  const dp = Array.from({ length: ns + 1 }, () => Array(nt + 1).fill(Infinity));
-  const prev = Array.from({ length: ns + 1 }, () => Array(nt + 1).fill(null));
-  dp[0][0] = 0;
-  for (let i = 0; i <= ns; i++) for (let j = 0; j <= nt; j++) {
-    if (!Number.isFinite(dp[i][j])) continue;
-    for (const [sn, tn, penalty] of moves) {
-      const ni = i + sn, nj = j + tn;
-      if (ni > ns || nj > nt) continue;
-      const v = dp[i][j] + cost(i, sn, j, tn, penalty);
-      if (v < dp[ni][nj]) { dp[ni][nj] = v; prev[ni][nj] = { i, j, sn, tn }; }
+  const base = prior || (cjk && !isCJK(raw) ? 0.3 : !cjk && isCJK(raw) ? 3.3 : 1);
+  const r0 = totT / totS, EDGE = 0.5;
+  const moves = [[1, 1, 0], [1, 2, 0.34], [2, 1, 0.34], [1, 0, 1.6], [0, 1, 1.6]];
+  let best = null;
+  for (const r of new Set([r0, base, Math.sqrt(r0 * base), base * 1.35, base / 1.35])) {
+    const dp = Array.from({ length: ns + 1 }, () => Array(nt + 1).fill(Infinity));
+    const prev = Array.from({ length: ns + 1 }, () => Array(nt + 1).fill(null));
+    // Both sides start together; what one side lacks is at the end.
+    for (let i = 0; i <= ns; i++) dp[i][0] = i * 1.6;
+    for (let j = 0; j <= nt; j++) dp[0][j] = j * 1.6;
+    for (let i = 0; i <= ns; i++) for (let j = 0; j <= nt; j++) {
+      for (const [sn, tn, penalty] of moves) {
+        const ni = i + sn, nj = j + tn;
+        if (ni > ns || nj > nt) continue;
+        const cost = sn && tn
+          ? Math.abs(Math.log(sum(tl, j, tn) / (r * sum(sl, i, sn)))) + penalty + terms(i, sn, j, tn) : penalty;
+        if (dp[i][j] + cost < dp[ni][nj]) { dp[ni][nj] = dp[i][j] + cost; prev[ni][nj] = { i, j, sn, tn }; }
+      }
     }
-  }
-  const steps = [];
-  for (let i = ns, j = nt; i || j;) {
-    const p = prev[i][j];
-    if (!p) return whole;
-    steps.unshift(p); i = p.i; j = p.j;
+    for (let i = 0; i <= ns; i++) for (let j = 0; j <= nt; j++) {
+      const total = dp[i][j] + (ns - i + nt - j) * EDGE + Math.abs(Math.log(r / base));
+      if (!best || total < best.total) best = { total, i, j, prev };
+    }
   }
   const groups = [];
-  let headS = null, headT = null;
-  for (const p of steps) {
-    if (p.sn && p.tn) {
-      groups.push({
-        s: [headS ?? S[p.i][0], S[p.i + p.sn - 1][1]],
-        t: [headT ?? T[p.j][0], T[p.j + p.tn - 1][1]]
-      });
-      headS = headT = null;
-    } else if (p.sn) {
-      if (groups.length) groups[groups.length - 1].s[1] = S[p.i][1]; else headS = headS ?? S[p.i][0];
-    } else if (groups.length) groups[groups.length - 1].t[1] = T[p.j][1];
-    else headT = headT ?? T[p.j][0];
+  for (let i = best.i, j = best.j; best.prev[i][j];) {
+    const p = best.prev[i][j];
+    if (p.sn && p.tn) groups.unshift({ s: [S[p.i][0], S[p.i + p.sn - 1][1]], t: [T[p.j][0], T[p.j + p.tn - 1][1]] });
+    i = p.i; j = p.j;
   }
-  return groups.length ? groups : whole;
+  if (!groups.length) return whole;
+  const paired = n => groups.reduce((sum, g) => sum + n(g), 0);
+  groups.stats = { source: ns, translation: nt, pairs: groups.length };
+  if (paired(g => letterCount(raw, g.s[0], g.s[1])) === totS && paired(g => letterCount(result, g.t[0], g.t[1])) === totT) groups.ratio = r0;
+  return groups;
 }
 
-function segment(raw, result) {
-  const groups = pairSentences(raw, result);
+function segment(raw, result, prior) {
+  const groups = pairSentences(raw, result, prior);
   for (const g of groups) {
     g.n = { s: letterCount(raw, g.s[0], g.s[1]), t: letterCount(result, g.t[0], g.t[1]) };
     g.links = anchorLinks(raw, result, g);

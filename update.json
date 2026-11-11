@@ -3,8 +3,8 @@
     "sync-translate-companion@local.zotero": {
       "updates": [
         {
-          "version": "0.4.7",
-          "update_link": "https://github.com/liuguanlin80-cell/zotero-sync-translate/releases/download/v0.4.7/sync-translate-0.4.7.xpi",
+          "version": "0.4.8",
+          "update_link": "https://github.com/liuguanlin80-cell/zotero-sync-translate/releases/download/v0.4.8/sync-translate-0.4.8.xpi",
           "applications": {
             "zotero": {
               "strict_min_version": "9.999",
