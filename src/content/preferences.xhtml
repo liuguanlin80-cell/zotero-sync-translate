@@ -1,0 +1,27 @@
+<vbox xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+      xmlns:html="http://www.w3.org/1999/xhtml" id="sync-translate-preferences">
+  <html:div style="padding:14px;max-width:560px;font:inherit;line-height:2">
+    <html:h2>Sync Translate</html:h2>
+    <html:p><html:label><html:input id="sync-translate-pref-enabled" type="checkbox"/> <html:span id="sync-translate-pref-enabled-label">Enabled</html:span></html:label></html:p>
+    <html:p><html:label for="sync-translate-pref-alignSource" id="sync-translate-pref-source-label">Word alignment: </html:label>
+      <html:select id="sync-translate-pref-alignSource">
+        <html:option value="auto" id="sync-translate-pref-opt-auto">Current translation service</html:option>
+        <html:option value="off" id="sync-translate-pref-opt-off">Off (sentence only)</html:option>
+        <html:option value="custom" id="sync-translate-pref-opt-custom">Custom endpoint</html:option>
+        <html:option value="jev">Jev</html:option>
+      </html:select>
+    </html:p>
+    <html:p id="sync-translate-pref-hint" style="opacity:.7;margin-top:-6px"></html:p>
+    <html:div id="sync-translate-pref-custom">
+      <html:p><html:label for="sync-translate-pref-alignEndpoint" id="sync-translate-pref-endpoint-label">Endpoint: </html:label><html:input id="sync-translate-pref-alignEndpoint" type="url" size="44"/></html:p>
+      <html:p><html:label for="sync-translate-pref-alignModel" id="sync-translate-pref-model-label">Model: </html:label><html:input id="sync-translate-pref-alignModel" type="text" size="24"/></html:p>
+      <html:p><html:label for="sync-translate-pref-alignApiKey" id="sync-translate-pref-key-label">API key: </html:label><html:input id="sync-translate-pref-alignApiKey" type="password" size="36" autocomplete="off"/></html:p>
+    </html:div>
+    <html:p><html:label><html:input id="sync-translate-pref-reverse" type="checkbox"/> <html:span id="sync-translate-pref-reverse-label">Point at a PDF word to mark its translation</html:span></html:label>
+      <html:label style="margin-left:14px"><html:input id="sync-translate-pref-reverseCtrl" type="checkbox"/> <html:span id="sync-translate-pref-ctrl-label">Only while holding Ctrl</html:span></html:label></html:p>
+    <html:p><html:label for="sync-translate-pref-capDaily" id="sync-translate-pref-cap-label">Daily token cap (0 = none): </html:label><html:input id="sync-translate-pref-capDaily" type="number" min="0" step="1000" style="width:8em"/>
+      <html:span id="sync-translate-pref-used" style="margin-left:14px;opacity:.7"></html:span></html:p>
+    <html:p><html:button id="sync-translate-pref-clear-align">Clear alignment cache</html:button> <html:button id="sync-translate-pref-clear-gloss">Clear phrase table</html:button>
+      <html:span id="sync-translate-pref-message" role="status" style="margin-left:10px;opacity:.7"></html:span></html:p>
+  </html:div>
+</vbox>
