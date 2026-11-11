@@ -292,7 +292,7 @@ async function test(name, fn) { await fn(); passed++; console.log('ok  ' + name)
     await tick(40);
     assert.strictEqual(w.requests.length, 2);
     assert(w.requests[1].body.messages[0].content.includes('[[treatment]]'));
-    assert.strictEqual(s.surface.marked, '处理后');
+    assert.strictEqual(s.surface.marked, '处理');
     same(s.lit(), ['aftertreatment']);
     s.off(true); s.over('treatment', true);
     await tick(40);

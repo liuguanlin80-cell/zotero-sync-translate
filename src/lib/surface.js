@@ -253,33 +253,56 @@ class HighlightPalette {
   dispose(){this.stopTracking();this.node?.remove();this.node=null;this.action=null;this.selection=null;}
 }
 
+/** Status of the translation box: a thin pulsing line along its top edge while waiting for the model
+ * (it covers no text), and a short label only when something went wrong. */
 class AlignmentIndicator {
-  constructor(surface) { this.surface=surface; this.doc=surface.doc; this.win=surface.win; this.node=null; this.text=''; this.title=''; }
-  ensure() {
-    if(this.node?.isConnected)return this.node;
-    this.node=html(this.doc,'span');this.node.className='sync-translate-alignment-indicator';
-    this.node.setAttribute('role','status');this.node.setAttribute('aria-live','polite');this.node.setAttribute('aria-atomic','true');
-    this.node.style.cssText='position:fixed;z-index:2147483050;pointer-events:none;padding:1px 4px;border-radius:4px;'+
-      'font:10px/1.35 system-ui,sans-serif;letter-spacing:.01em;opacity:.78;'+
-      'background:color-mix(in srgb, Canvas 78%, transparent);color:CanvasText;'+
-      'border:1px solid color-mix(in srgb, CanvasText 18%, transparent);backdrop-filter:blur(2px);';
-    (this.doc.body||this.doc.documentElement).appendChild(this.node);return this.node;
+  constructor(surface) {
+    this.surface = surface; this.doc = surface.doc; this.win = surface.win;
+    this.node = null; this.bar = null; this.text = ''; this.busy = false;
   }
-  set(text,title='') {
-    this.text=String(text||'');this.title=String(title||'');
-    if(!this.text){this.hide();return;}
-    const node=this.ensure();node.textContent=this.text;node.title=this.title;node.style.display='';this.position();
+  make(css) {
+    const node = html(this.doc, 'span');
+    node.style.cssText = 'position:fixed;z-index:2147483050;pointer-events:none;' + css;
+    (this.doc.body || this.doc.documentElement).appendChild(node);
+    return node;
+  }
+  set(text, title = '', busy = false) {
+    this.text = String(text || ''); this.busy = !!busy;
+    if (this.text) {
+      if (!this.node?.isConnected) {
+        this.node = this.make('padding:1px 4px;border-radius:4px;font:10px/1.35 system-ui,sans-serif;opacity:.85;' +
+          'background:color-mix(in srgb, Canvas 78%, transparent);color:CanvasText;' +
+          'border:1px solid color-mix(in srgb, CanvasText 18%, transparent);');
+        this.node.setAttribute('role', 'status');
+      }
+      this.node.textContent = this.text; this.node.title = String(title || ''); this.node.style.display = '';
+    } else if (this.node) this.node.style.display = 'none';
+    if (this.busy) {
+      if (!this.bar?.isConnected) {
+        this.bar = this.make('height:2px;border-radius:1px;background:rgb(245,166,35);');
+        safeGet(() => this.bar.animate([{ opacity: 0.2 }, { opacity: 1 }], { duration: 500, iterations: Infinity, direction: 'alternate' }));
+      }
+      this.bar.style.display = '';
+    } else if (this.bar) this.bar.style.display = 'none';
+    this.position();
   }
   position() {
-    if(!this.node?.isConnected||!this.text)return;
-    const el=this.surface.control?.isConnected?this.surface.control:this.surface.element;
-    if(!el?.isConnected){this.hide();return;}
-    const b=el.getBoundingClientRect();
-    const top=Math.max(2,Math.min(this.win.innerHeight-18,b.top+3));
-    const right=Math.max(2,Math.min(this.win.innerWidth-24,this.win.innerWidth-b.right+4));
-    this.node.style.top=top+'px';this.node.style.right=right+'px';
+    const el = this.surface.control?.isConnected ? this.surface.control : this.surface.element;
+    if (!el?.isConnected) {
+      if (this.node) this.node.style.display = 'none';
+      if (this.bar) this.bar.style.display = 'none';
+      return;
+    }
+    const b = el.getBoundingClientRect();
+    if (this.text && this.node) {
+      this.node.style.top = Math.max(2, Math.min(this.win.innerHeight - 18, b.top + 3)) + 'px';
+      this.node.style.right = Math.max(2, Math.min(this.win.innerWidth - 24, this.win.innerWidth - b.right + 4)) + 'px';
+    }
+    if (this.busy && this.bar) {
+      this.bar.style.left = b.left + 'px'; this.bar.style.top = b.top + 'px'; this.bar.style.width = b.width + 'px';
+    }
   }
-  hide(){if(this.node)this.node.style.display='none';}
-  dispose(){this.node?.remove();this.node=null;}
+  dispose() { this.node?.remove(); this.bar?.remove(); this.node = this.bar = null; }
 }
+
 module.exports = { visible, TextSurface, HighlightPalette, AlignmentIndicator };

@@ -18,6 +18,8 @@ const files = [
   ['prefs.js', read('prefs.js')],
   ['content/preferences.xhtml', read('content/preferences.xhtml')],
   ['content/preferences.js', read('content/preferences.js')],
+  ['content/icons/icon.png', read('content/icons/icon.png')],
+  ['content/icons/icon@2x.png', read('content/icons/icon@2x.png')],
   ['content/sync-translate.js', Buffer.from(bundle)]
 ];
 

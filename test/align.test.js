@@ -36,6 +36,11 @@ test('sentence split keeps abbreviations and decimals together', () => {
   assert(parts[1].startsWith('The p value'));
 });
 
+test('figure and reference numbers never end a sentence', () => {
+  const text = 'Leakage rose (Fig. 1A and SupplementaryFig. 1B)42. It fell later (see ref. 12 and Eq. 3). Next, we tested 10 samples.';
+  assert.strictEqual(A.sentences(text).length, 3);
+});
+
 test('chinese sentence split', () => {
   const text = '我们检测了XBP1。结果显示其表达升高！这是否重要？';
   assert.strictEqual(A.sentences(text).length, 3);
@@ -257,6 +262,12 @@ test('without occurrence numbers, neighbours decide; a number out of range is ig
   assert.strictEqual(links.length, 4);
   const second = links.find(l => l[0] === s.lastIndexOf('cells'));
   assert.strictEqual(second[2], zh.lastIndexOf('细胞'));
+});
+
+test('a word copied with its capital letter names that occurrence', () => {
+  const s = 'Exposure to bacteria raised leakage, as shown by exposure to two strains.', zh = '细菌暴露使渗漏增加，两种菌株均如此。';
+  const links = A.verifyPairs(s, zh, [['strains', '菌株'], ['Exposure', '暴露'], ['bacteria', '细菌']]).links;
+  assert.strictEqual(links.find(l => zh.slice(l[2], l[3]) === '暴露')[0], 0);
 });
 
 test('the prompt states the rules the local check relies on', () => {

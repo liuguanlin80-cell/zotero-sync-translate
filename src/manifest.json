@@ -1,9 +1,13 @@
 {
   "manifest_version": 2,
   "name": "Sync Translate",
-  "version": "0.4.9",
+  "version": "0.5.0",
   "description": "Select translated text to highlight its source in the PDF. Works with Translate for Zotero.",
   "author": "Sync Translate",
+  "icons": {
+    "48": "content/icons/icon.png",
+    "96": "content/icons/icon@2x.png"
+  },
   "applications": {
     "zotero": {
       "id": "sync-translate-companion@local.zotero",

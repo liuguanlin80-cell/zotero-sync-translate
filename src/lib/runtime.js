@@ -598,11 +598,11 @@ class Companion {
   }
   note(record, groups) {
     let text = '', title = '';
-    const failed = groups.find(g => g.note === 'fail');
-    if (groups.some(g => g.pending || g.looking)) text = this.t('pending');
+    const busy = groups.some(g => g.pending || g.looking), failed = groups.find(g => g.note === 'fail');
+    if (busy) text = '';
     else if (failed) { text = this.t('fail'); title = failed.error || ''; }
     else if (groups.some(g => g.note === 'cap')) text = this.t('cap');
-    record.indicator.set(text, title);
+    record.indicator.set(text, title, busy);
   }
   refresh(p) {
     if (this.disposed || p.dead) return;

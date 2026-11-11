@@ -5,7 +5,7 @@ const ALPHA = /[A-Za-zÀ-ɏ]/, DIGIT = /[0-9]/;
 /** True when two neighbouring characters belong to one word or one number. */
 function joined(a, b) { return (ALPHA.test(a) && ALPHA.test(b)) || (DIGIT.test(a) && DIGIT.test(b)); }
 const TERM = /[A-Za-z0-9][A-Za-z0-9.\-\/]*[A-Za-z0-9]|[A-Za-z0-9]/g;
-const ABBR = /(?:^|[\s(\[])(?:Fig|Figs|Eq|Eqs|Ref|Refs|No|Nos|Dr|Mr|Mrs|Ms|Prof|vs|etc|al|approx|ca|cf|e\.g|i\.e|St|Vol|pp|Suppl|Tab|[A-Za-z])$/;
+const ABBR = /(?:^|[^A-Za-z])(?:Fig|Figs|Eq|Eqs|Ref|Refs|No|Nos|Dr|Mr|Mrs|Ms|Prof|vs|etc|al|approx|ca|cf|e\.g|i\.e|St|Vol|pp|Suppl|Tab|[A-Za-z])$/;
 
 function isCJK(text) { return /[぀-ヿ㐀-鿿가-힯]/.test(text); }
 
@@ -45,6 +45,7 @@ function sentences(text) {
       if (ABBR.test(text.slice(Math.max(start, m.index - 8), m.index))) continue;
       const next = text.slice(end).match(/\S/);
       if (next && /\p{Ll}/u.test(next[0])) continue;
+      if (next && /\d/.test(next[0]) && /\p{L}/u.test(text[m.index - 1] || '')) continue;
     }
     push(end);
   }
@@ -141,7 +142,7 @@ function pairSentences(raw, result, prior) {
   }
   if (!groups.length) return whole;
   const paired = n => groups.reduce((sum, g) => sum + n(g), 0);
-  groups.stats = { source: ns, translation: nt, pairs: groups.length };
+  groups.stats = { source: ns, translation: nt, pairs: groups.length, letters: ns === nt ? undefined : sl };
   if (paired(g => letterCount(raw, g.s[0], g.s[1])) === totS && paired(g => letterCount(result, g.t[0], g.t[1])) === totT) groups.ratio = r0;
   return groups;
 }
@@ -248,7 +249,11 @@ function verifyPairs(sText, tText, pairs) {
   // "word#2" names the second occurrence of "word".
   const places = (h, text, phrase) => {
     const literal = findAll(h, text, phrase), marked = /^(.+?)\s*#(\d+)$/.exec(String(phrase).trim());
-    if (!marked) return literal;
+    if (!marked) {
+      // "Exposure" copied with its capital names the occurrence written that way.
+      const same = literal.filter(r => text.slice(r[0], r[1]) === String(phrase).trim());
+      return same.length && same.length < literal.length ? same : literal;
+    }
     const all = findAll(h, text, marked[1]);
     return all[marked[2] - 1] ? [all[marked[2] - 1]] : literal.length ? literal : all;
   };
@@ -261,7 +266,7 @@ function verifyPairs(sText, tText, pairs) {
       else if (!whole(sOcc[0], tOcc[0])) links.push([sOcc[0][0], sOcc[0][1], tOcc[0][0], tOcc[0][1]]);
       continue;
     }
-    const key = norm(sp).v.trim() + ' ||| ' + norm(tp).v.trim();
+    const key = sOcc.map(r => r[0]).join(',') + '|' + tOcc.map(r => r[0]).join(',');
     if (!seen.has(key)) { seen.add(key); open.push({ sOcc, tOcc, left: Math.min(sOcc.length, tOcc.length) }); }
   }
   // Repeated phrases: take the best-fitting occurrence pair each time, so earlier choices guide later ones.
@@ -297,7 +302,7 @@ const BREAK = /[,;:，；：。.!?！？()（）、]/;
 
 /** A short run of short words ("of the", "that were", "的"): function words, not content left out by the model. */
 function minor(run) {
-  if (isCJK(run)) return run.length <= 2;
+  if (isCJK(run)) return /^[的地得了着过们]$/.test(run);
   const words = run.split(/\s+/);
   return words.length <= 2 && words.every(w => letterCount(w) <= 5);
 }
@@ -321,7 +326,7 @@ function owned(g, text, side) {
     const run = text.slice(i, b), next = sorted.find(l => l[side][0] >= b && clear(b, l[side][0]));
     if (minor(run)) {
       const prev = [...sorted].reverse().find(l => l[side][1] <= i && clear(l[side][1], i));
-      const owner = isCJK(run) ? prev || next : next || prev;
+      const owner = isCJK(run) ? prev : next || prev;
       if (owner) { const r = ranges.get(owner); r[0] = Math.min(r[0], i); r[1] = Math.max(r[1], b); }
     } else if (next && !isCJK(run)) {
       // A longer unpaired run: only its last short word ("the", "of") goes with what follows.

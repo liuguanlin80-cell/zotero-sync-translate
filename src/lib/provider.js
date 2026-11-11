@@ -224,7 +224,7 @@ async function post(Z, url, headers, body, timeout) {
 }
 
 function groupKey(p, g) {
-  return hash(['4', p.langfrom, p.langto, p.raw.slice(g.s[0], g.s[1]), p.result.slice(g.t[0], g.t[1])].join('\u0001'));
+  return hash(['5', p.langfrom, p.langto, p.raw.slice(g.s[0], g.s[1]), p.result.slice(g.t[0], g.t[1])].join('\u0001'));
 }
 
 /** Installs links (offsets relative to the group) as the group's fine alignment. */
