@@ -174,12 +174,13 @@ class TFZ {
   }
 }
 
-function buildRequest(spec, prompt, tuned) {
+/** cap: upper bound on reply tokens, so a model that ignores the format cannot run on. */
+function buildRequest(spec, prompt, tuned, cap) {
   const headers = { 'Content-Type': 'application/json' };
   if (spec.format === 'gemini') return { headers, body: { contents: [{ role: 'user', parts: [{ text: prompt }] }] } };
   if (spec.format === 'anthropic') {
     headers['x-api-key'] = spec.secret; headers['anthropic-version'] = '2023-06-01';
-    const body = { model: spec.model, max_tokens: 1024, messages: [{ role: 'user', content: prompt }], stream: false, ...spec.extra };
+    const body = { model: spec.model, max_tokens: cap || 1024, messages: [{ role: 'user', content: prompt }], stream: false, ...spec.extra };
     if (tuned && Number.isFinite(spec.temperature)) body.temperature = spec.temperature;
     return { headers, body };
   }
@@ -188,7 +189,10 @@ function buildRequest(spec, prompt, tuned) {
   const extra = Object.fromEntries(Object.entries(spec.extra).filter(([k]) => !(k in think)));
   const body = { model: spec.model, stream: false, ...think, ...extra };
   if (spec.format === 'responses') { body.input = prompt; body.store = false; } else body.messages = [{ role: 'user', content: prompt }];
-  if (tuned && Number.isFinite(spec.temperature) && !reasoningModel(spec.model)) body.temperature = spec.temperature;
+  if (tuned && !reasoningModel(spec.model)) {
+    if (Number.isFinite(spec.temperature)) body.temperature = spec.temperature;
+    if (cap && !('max_completion_tokens' in body) && !('max_output_tokens' in body)) body[spec.format === 'responses' ? 'max_output_tokens' : 'max_tokens'] = cap;
+  }
   return { headers, body };
 }
 
@@ -220,7 +224,7 @@ async function post(Z, url, headers, body, timeout) {
 }
 
 function groupKey(p, g) {
-  return hash(['3', p.langfrom, p.langto, p.raw.slice(g.s[0], g.s[1]), p.result.slice(g.t[0], g.t[1])].join('\u0001'));
+  return hash(['4', p.langfrom, p.langto, p.raw.slice(g.s[0], g.s[1]), p.result.slice(g.t[0], g.t[1])].join('\u0001'));
 }
 
 /** Installs links (offsets relative to the group) as the group's fine alignment. */
@@ -289,7 +293,7 @@ class Aligner {
     const sText = p.raw.slice(g.s[0], g.s[1]), tText = p.result.slice(g.t[0], g.t[1]);
     const word = (side === 's' ? p.raw : p.result).slice(lo, hi);
     try {
-      const answer = await this.ask(spec, A.lookupPrompt(sText, tText, side, lo - g[side][0], hi - g[side][0]));
+      const answer = await this.ask(spec, A.lookupPrompt(sText, tText, side, lo - g[side][0], hi - g[side][0]), 80);
       const near = g.links.reduce((best, l) => {
         const d = Math.abs(l[side][0] - lo);
         return !best || d < best.d ? { d, at: l[out][0] - g[out][0] } : best;
@@ -330,14 +334,15 @@ class Aligner {
     }
   }
   async llm(spec, sText, tText) {
-    const answer = await this.ask(spec, A.alignPrompt(sText, tText));
+    const words = A.tokenize(sText).filter(t => t.word).length;
+    const answer = await this.ask(spec, A.alignPrompt(sText, tText), Math.min(2000, 120 + 14 * words));
     const checked = A.verifyPairs(sText, tText, A.parsePairs(answer));
     if (checked.rejected) this.trace('rejected', { pairs: checked.rejected, kept: checked.links.length });
     return checked.links;
   }
-  async ask(spec, prompt) {
+  async ask(spec, prompt, cap) {
     const id = spec.url + '|' + spec.model;
-    let data, req = buildRequest(spec, prompt, !this.plain.has(id));
+    let data, req = buildRequest(spec, prompt, !this.plain.has(id), cap);
     try { data = await post(this.Z, spec.url, req.headers, req.body, 12000); }
     catch (e) {
       if (e.status !== 400 || this.plain.has(id)) throw e;

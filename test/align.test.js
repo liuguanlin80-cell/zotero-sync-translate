@@ -241,6 +241,29 @@ test('an evenly paired passage reports its length ratio', () => {
   assert(p.groups.ratio > 0.2 && p.groups.ratio < 0.6);
 });
 
+test('occurrence numbers from the model decide repeated words, in any listing order', () => {
+  const s = 'The cells were treated and the cells died.', zh = '细胞经过处理，随后细胞死亡。';
+  for (const pairs of [['died ||| 死亡', 'cells#2 ||| 细胞#2', 'treated ||| 处理', 'cells ||| 细胞'], ['cells ||| 细胞', 'cells#2 ||| 细胞#2']]) {
+    const links = A.verifyPairs(s, zh, pairs.map(x => x.split(' ||| '))).links;
+    const first = links.find(l => l[0] === s.indexOf('cells')), second = links.find(l => l[0] === s.lastIndexOf('cells'));
+    assert.strictEqual(first[2], zh.indexOf('细胞'));
+    assert.strictEqual(second[2], zh.lastIndexOf('细胞'));
+  }
+});
+
+test('without occurrence numbers, neighbours decide; a number out of range is ignored', () => {
+  const s = 'The cells were treated and the cells died.', zh = '细胞经过处理，随后细胞死亡。';
+  const links = A.verifyPairs(s, zh, [['died', '死亡'], ['cells', '细胞'], ['treated', '处理'], ['cells#5', '细胞']]).links;
+  assert.strictEqual(links.length, 4);
+  const second = links.find(l => l[0] === s.lastIndexOf('cells'));
+  assert.strictEqual(second[2], zh.lastIndexOf('细胞'));
+});
+
+test('the prompt states the rules the local check relies on', () => {
+  const prompt = A.alignPrompt('a', 'b');
+  for (const rule of ['|||', 'exactly', '#2', 'articles', 'Never pair a clause']) assert(prompt.includes(rule), rule);
+});
+
 test('single-word reply: exact match, nearest occurrence, and "none"', () => {
   const text = '细胞经过处理，随后细胞死亡。';
   assert.deepStrictEqual(A.verifyLookup(text, '处理', 0), [[4, 6]]);

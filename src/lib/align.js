@@ -185,14 +185,17 @@ function findAll(h, text, needle) {
 }
 
 function alignPrompt(source, translation) {
-  return 'Align the translation with its source word by word.\n' +
-    'Output one pair per line: source word ||| translated word\n' +
-    'Copy both sides exactly as they appear. Pair single words; join words only when they translate as one unit. ' +
-    'If a word occurs more than once, include a neighbouring word so the pair is unambiguous. ' +
-    'Skip words that have no counterpart. Follow the order of the translation. Output nothing else.\n\n' +
-    'Source: The drug markedly reduced tumor growth in mice.\n' +
-    'Translation: 该药物显著抑制了小鼠的肿瘤生长。\n' +
-    'drug ||| 药物\nmarkedly ||| 显著\nreduced ||| 抑制\nmice ||| 小鼠\ntumor ||| 肿瘤\ngrowth ||| 生长\n\n' +
+  return 'Align the translation with its source, word by word.\n' +
+    'Rules:\n' +
+    '1. One pair per line: source word ||| translated word. Output nothing else.\n' +
+    '2. Copy both sides exactly as they appear in the texts.\n' +
+    '3. One word or one fixed term per pair. Never pair a clause.\n' +
+    '4. Do not list articles, prepositions, conjunctions, auxiliaries or particles on their own; leave them out.\n' +
+    '5. If a word occurs more than once in its text, mark each later occurrence with #2, #3 and so on.\n' +
+    '6. Leave out words that have no counterpart.\n\n' +
+    'Source: The drug reduced tumor growth, and the drug was safe in mice.\n' +
+    'Translation: 该药物抑制了肿瘤生长，并且该药物在小鼠中是安全的。\n' +
+    'drug ||| 药物\nreduced ||| 抑制\ntumor ||| 肿瘤\ngrowth ||| 生长\ndrug#2 ||| 药物#2\nmice ||| 小鼠\nsafe ||| 安全\n\n' +
     'Source: ' + source + '\nTranslation: ' + translation;
 }
 
@@ -233,24 +236,60 @@ function parsePairs(answer) {
   return out;
 }
 
-/** Keeps a pair only when both phrases are found verbatim. Offsets are relative to the two texts. */
+/** Keeps a pair only when both phrases are found verbatim. A phrase that occurs more than once goes to
+ * the occurrence whose neighbours in the translation are also its neighbours in the source, whatever
+ * order the pairs were listed in. Offsets are relative to the two texts. */
 function verifyPairs(sText, tText, pairs) {
-  const hs = norm(sText), ht = norm(tText), links = [], usedS = [], usedT = [];
+  const hs = norm(sText), ht = norm(tText), links = [], open = [], seen = new Set();
   const ns = letterCount(sText), nt = letterCount(tText);
-  const free = (r, used) => !used.some(u => r[0] < u[1] && r[1] > u[0]);
-  let lastS = 0, lastT = 0, rejected = 0;
+  const freeS = r => !links.some(l => r[0] < l[1] && r[1] > l[0]);
+  const freeT = r => !links.some(l => r[0] < l[3] && r[1] > l[2]);
+  const whole = (s, t) => ns > 12 && letterCount(sText, s[0], s[1]) > 0.7 * ns && letterCount(tText, t[0], t[1]) > 0.7 * nt;
+  // "word#2" names the second occurrence of "word".
+  const places = (h, text, phrase) => {
+    const literal = findAll(h, text, phrase), marked = /^(.+?)\s*#(\d+)$/.exec(String(phrase).trim());
+    if (!marked) return literal;
+    const all = findAll(h, text, marked[1]);
+    return all[marked[2] - 1] ? [all[marked[2] - 1]] : literal.length ? literal : all;
+  };
+  let rejected = 0;
   for (const [sp, tp] of pairs) {
-    const tOcc = findAll(ht, tText, tp).filter(r => free(r, usedT));
-    const sOcc = findAll(hs, sText, sp).filter(r => free(r, usedS));
-    if (!tOcc.length || !sOcc.length) { rejected++; continue; }
-    const t = tOcc.find(r => r[0] >= lastT) || tOcc[0];
-    const s = sOcc.reduce((best, r) => Math.abs(r[0] - lastS) < Math.abs(best[0] - lastS) ? r : best, sOcc[0]);
-    if (ns > 12 && letterCount(sText, s[0], s[1]) > 0.7 * ns && letterCount(tText, t[0], t[1]) > 0.7 * nt) continue;
-    links.push([s[0], s[1], t[0], t[1]]);
-    usedS.push(s); usedT.push(t); lastS = s[1]; lastT = t[1];
+    const sOcc = places(hs, sText, sp), tOcc = places(ht, tText, tp);
+    if (!sOcc.length || !tOcc.length) { rejected++; continue; }
+    if (sOcc.length === 1 && tOcc.length === 1) {
+      if (!freeS(sOcc[0]) || !freeT(tOcc[0])) rejected++;
+      else if (!whole(sOcc[0], tOcc[0])) links.push([sOcc[0][0], sOcc[0][1], tOcc[0][0], tOcc[0][1]]);
+      continue;
+    }
+    const key = norm(sp).v.trim() + ' ||| ' + norm(tp).v.trim();
+    if (!seen.has(key)) { seen.add(key); open.push({ sOcc, tOcc, left: Math.min(sOcc.length, tOcc.length) }); }
+  }
+  // Repeated phrases: take the best-fitting occurrence pair each time, so earlier choices guide later ones.
+  const scale = sText.length / Math.max(1, tText.length), mid = (a, b) => (a + b) / 2;
+  const fit = (s, t) => {
+    if (!links.length) return Math.abs(mid(s[0], s[1]) / sText.length - mid(t[0], t[1]) / Math.max(1, tText.length)) * sText.length;
+    let best = Infinity;
+    for (const l of links) {
+      best = Math.min(best, Math.abs(mid(l[0], l[1]) - mid(s[0], s[1])) + scale * Math.abs(mid(l[2], l[3]) - mid(t[0], t[1])));
+    }
+    return best;
+  };
+  for (;;) {
+    let pick = null;
+    for (const o of open) {
+      if (!o.left) continue;
+      for (const s of o.sOcc) for (const t of o.tOcc) {
+        if (!freeS(s) || !freeT(t)) continue;
+        const score = fit(s, t);
+        if (!pick || score < pick.score) pick = { o, s, t, score };
+      }
+    }
+    if (!pick) break;
+    pick.o.left--;
+    if (!whole(pick.s, pick.t)) links.push([pick.s[0], pick.s[1], pick.t[0], pick.t[1]]);
   }
   let covered = 0;
-  for (const u of usedT) covered += letterCount(tText, u[0], u[1]);
+  for (const l of links) covered += letterCount(tText, l[2], l[3]);
   return { links, rejected, coverage: nt ? covered / nt : 0 };
 }
 
@@ -260,7 +299,7 @@ const BREAK = /[,;:，；：。.!?！？()（）、]/;
 function minor(run) {
   if (isCJK(run)) return run.length <= 2;
   const words = run.split(/\s+/);
-  return run.length <= 14 && words.length <= 3 && words.every(w => letterCount(w) <= 5);
+  return words.length <= 2 && words.every(w => letterCount(w) <= 5);
 }
 
 /** Unpaired words go with a neighbouring pair: the following one in spaced scripts ("of the loss"),
@@ -279,11 +318,15 @@ function owned(g, text, side) {
     while (j < end && !linked(j) && !BREAK.test(text[j])) j++;
     let b = j;
     while (b > i && !LETTER.test(text[b - 1])) b--;
-    if (minor(text.slice(i, b))) {
-      const next = sorted.find(l => l[side][0] >= b && clear(b, l[side][0]));
+    const run = text.slice(i, b), next = sorted.find(l => l[side][0] >= b && clear(b, l[side][0]));
+    if (minor(run)) {
       const prev = [...sorted].reverse().find(l => l[side][1] <= i && clear(l[side][1], i));
-      const owner = isCJK(text.slice(i, b)) ? prev || next : next || prev;
+      const owner = isCJK(run) ? prev || next : next || prev;
       if (owner) { const r = ranges.get(owner); r[0] = Math.min(r[0], i); r[1] = Math.max(r[1], b); }
+    } else if (next && !isCJK(run)) {
+      // A longer unpaired run: only its last short word ("the", "of") goes with what follows.
+      const last = /(?:^|\s)(\S{1,3})$/.exec(run);
+      if (last) ranges.get(next)[0] = Math.min(ranges.get(next)[0], b - last[1].length);
     }
     i = Math.max(j, i + 1);
   }

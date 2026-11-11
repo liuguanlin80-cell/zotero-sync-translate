@@ -82,6 +82,7 @@ async function test(name, fn) { await fn(); passed++; console.log('ok  ' + name)
     same(r.body.thinking, { type: 'disabled' });
     assert.strictEqual(r.body.stream, false);
     assert.strictEqual(r.body.temperature, 0.2);
+    assert(r.body.max_tokens >= 120 && r.body.max_tokens <= 2000, 'reply length is capped');
     assert.strictEqual(r.body.messages.length, 1);
     assert(!/Paper Title/.test(r.body.messages[0].content));
     assert.strictEqual(p.groups[0].done, true);
@@ -187,6 +188,7 @@ async function test(name, fn) { await fn(); passed++; console.log('ok  ' + name)
     await tick(20);
     assert.strictEqual(w.requests.length, 2);
     assert.strictEqual(w.requests[1].body.temperature, undefined);
+    assert.strictEqual(w.requests[1].body.max_tokens, undefined);
     assert.strictEqual(p.groups[0].done, true);
     c.shutdown();
   });
