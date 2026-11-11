@@ -2,6 +2,8 @@
 
 Zotero 插件。把 [Translate for Zotero](https://github.com/windingwind/zotero-pdf-translate)（下称 TFZ）的译文和 PDF 原文对应起来：划译文，原文高亮；指原文，译文标出。
 
+[项目介绍](https://warmablog.com/projects/sync-translate) · [下载插件](https://github.com/liuguanlin80-cell/zotero-sync-translate/releases/latest)
+
 划译文，原文高亮：
 
 ![划译文高亮原文](docs/select.gif)
