@@ -76,6 +76,10 @@ node test/plugin.test.js
 
 源码在 `src/lib`：`align.js` 分句、配对和校验，`provider.js` 读取 TFZ 配置并请求模型，`runtime.js` 处理 Zotero 里的事件。
 
+## 致谢
+
+感谢 [LINUX DO](https://linux.do/) 社区提供开源项目分享与技术交流的平台，支持开放分享与互助。
+
 ## 许可
 
 MPL-2.0
