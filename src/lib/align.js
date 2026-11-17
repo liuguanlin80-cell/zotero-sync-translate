@@ -310,8 +310,9 @@ function minor(run) {
 /** Unpaired words go with a neighbouring pair: the following one in spaced scripts ("of the loss"),
  * the preceding one for Chinese-style particles. Returns each link's widened range on one side. */
 function owned(g, text, side) {
-  const key = side + g.links.length + ':' + g.links.reduce((n, l) => n + l[side][0] + l[side][1], 0);
-  if (g.owned?.[key]) return g.owned[key];
+  // Valid only for this very list of links: replacing or adding a link starts over.
+  if (g.owned?.links !== g.links || g.owned.count !== g.links.length) g.owned = { links: g.links, count: g.links.length };
+  if (g.owned[side]) return g.owned[side];
   const ranges = new Map(g.links.map(l => [l, [l[side][0], l[side][1]]]));
   const sorted = [...g.links].sort((x, y) => x[side][0] - y[side][0]);
   const linked = i => sorted.some(l => i >= l[side][0] && i < l[side][1]);
@@ -335,7 +336,7 @@ function owned(g, text, side) {
     }
     i = Math.max(j, i + 1);
   }
-  g.owned = { ...(g.owned || {}), [key]: ranges };
+  g.owned[side] = ranges;
   return ranges;
 }
 

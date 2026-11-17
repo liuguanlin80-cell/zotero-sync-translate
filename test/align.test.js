@@ -270,6 +270,18 @@ test('a word copied with its capital letter names that occurrence', () => {
   assert.strictEqual(links.find(l => zh.slice(l[2], l[3]) === '暴露')[0], 0);
 });
 
+test('links replaced by new ones at the same positions do not break resolving', () => {
+  const p = passage(EN, ZH), g = p.groups[0];
+  applyModel(p, g, ANSWER);
+  const at = ZH.indexOf('抑制剂');
+  A.resolve(p, 't', at, at + 3);
+  // the same pairs again as new objects, as when a model answer repeats what the phrase table found
+  g.links = g.links.map(l => ({ s: [...l.s], t: [...l.t], k: l.k }));
+  for (let a = 0; a < ZH.length; a += 3) A.resolve(p, 't', a, Math.min(ZH.length, a + 5));
+  for (const t of A.tokenize(EN)) A.resolve(p, 's', t.start, t.end);
+  assert.deepStrictEqual(sText(p, A.resolve(p, 't', at, at + 3).items), ['the inhibitor']);
+});
+
 test('the prompt states the rules the local check relies on', () => {
   const prompt = A.alignPrompt('a', 'b');
   for (const rule of ['|||', 'exactly', '#2', 'articles', 'Never pair a clause']) assert(prompt.includes(rule), rule);

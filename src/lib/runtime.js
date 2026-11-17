@@ -117,7 +117,21 @@ class Companion {
     this.setPref('schema', 4);
   }
 
+  /** An error inside an event handler would otherwise vanish; record it and carry on. */
+  guard() {
+    for (const name of ['syncSelection', 'move', 'refresh', 'subSelect']) {
+      const fn = this[name].bind(this);
+      this[name] = (...args) => {
+        try { return fn(...args); } catch (error) {
+          this.trace('error', { where: name, message: String(error?.message || error).slice(0, 120),
+            at: String(error?.stack || '').split('\n')[1]?.trim().slice(0, 120) || '' });
+          this.log(name, error);
+        }
+      };
+    }
+  }
   start() {
+    this.guard();
     this.migrate(); this.prefs = this.readPrefs();
     this.store.load().catch(() => {});
     const bind = (type, fn) => { this.Z.Reader.registerEventListener(type, fn, ID); this.listeners.push([type, fn]); };

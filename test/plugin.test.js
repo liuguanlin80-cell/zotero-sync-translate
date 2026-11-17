@@ -324,6 +324,18 @@ async function test(name, fn) { await fn(); passed++; console.log('ok  ' + name)
     c.shutdown();
   });
 
+  await test('an error while handling a selection is written to the log instead of vanishing', async () => {
+    const w = world();
+    const c = w.api.start(w.Zotero, {}, w.env);
+    const s = stage(w, c);
+    s.surface.sel = { start: 0, end: 4 };
+    s.record.surface.selection = () => { throw new Error('boom'); };
+    c.syncSelection(s.record);
+    const e = c.events.find(x => x.type === 'error');
+    assert(e && e.where === 'syncSelection' && e.message === 'boom', JSON.stringify(c.events.slice(-2)));
+    c.shutdown();
+  });
+
   await test('endpoint normalisation matches TFZ', async () => {
     const { normalizeEndpoint } = world().api.provider;
     assert.strictEqual(normalizeEndpoint('https://api.openai.com/v1', ''), 'https://api.openai.com/v1/chat/completions');
