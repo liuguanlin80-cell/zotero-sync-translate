@@ -66,12 +66,17 @@ Zotero 插件。把 [Translate for Zotero](https://github.com/windingwind/zotero
 - 弹窗顶部那一排颜色是 Zotero 自带的，点它会关闭翻译窗口。
 - Jev 和自定义接口两条路线未用真实服务验证。
 
+## 重启后插件不见了
+
+Zotero 启动时如果读不到某个插件的文件，会直接把它卸载（不只针对本插件）。例如杀毒软件在开机时扫描并暂时占住文件，就可能触发。遇到时重新安装即可；要避免，把 Zotero 配置目录下的 `extensions` 文件夹加入杀毒软件的信任区。
+
 ## 开发
 
 ```bash
 node build.js              # 生成 dist/sync-translate-<版本>.xpi 和 update.json
 node test/align.test.js
 node test/plugin.test.js
+node test/geom.test.js
 ```
 
 源码在 `src/lib`：`align.js` 分句、配对和校验，`provider.js` 读取 TFZ 配置并请求模型，`runtime.js` 处理 Zotero 里的事件。

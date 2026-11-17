@@ -77,6 +77,29 @@ function mapGeometry(source, geometry) {
   return result;
 }
 
+/** Used when the selection text and the page characters do not match exactly (figure labels caught in
+ * the selection, characters the PDF encodes differently): match the stretches that agree, in order. */
+function mapGeometryLoose(source, geometry) {
+  const s = canonical(source), g = canonical(geometry.text);
+  if (s.value.length < 24 || !g.value) return null;
+  const result = Array.from({ length: source.length }, () => []);
+  const STEP = 12;
+  let cursor = 0, matched = 0, misses = 0;
+  for (let i = 0; i < s.value.length; i += STEP) {
+    const chunk = s.value.slice(i, i + STEP);
+    if (chunk.length < 6) break;
+    const at = g.value.indexOf(chunk, cursor);
+    if (at < 0 || at - cursor > 400 + 40 * misses) { misses++; continue; }
+    for (let k = 0; k < chunk.length; k++) {
+      const gs = g.map[at + k], ss = s.map[i + k];
+      const glyphs = geometry.map.slice(gs.start, gs.end).filter(Boolean);
+      for (let j = ss.start; j < ss.end; j++) result[j].push(...glyphs);
+    }
+    matched += chunk.length; cursor = at + chunk.length; misses = 0;
+  }
+  return matched ? { map: result, ratio: matched / s.value.length } : null;
+}
+
 function sourceGeometryFromCaptures(source, captures) {
   for (const capture of [...captures].reverse()) {
     const result = mapGeometry(source, capture.geometry);
@@ -104,7 +127,13 @@ function sourceGeometryFromCaptures(source, captures) {
       if(base===span){for(let i=0;i<span.length;i++) if(local[capFirst+i]?.length) map[rawStart+i].push(...local[capFirst+i]);}
     }
   }
-  return matched ? { map, ratio: matched / Math.max(1, cs.value.length) } : null;
+  if (matched) return { map, ratio: matched / Math.max(1, cs.value.length) };
+  let best = null;
+  for (const capture of [...captures].reverse()) {
+    const loose = mapGeometryLoose(source, capture.geometry);
+    if (loose && (!best || loose.ratio > best.ratio)) best = loose;
+  }
+  return best && best.ratio >= 0.6 ? best : null;
 }
 function mergeGlyphRects(glyphs) {
   const rows = [];
@@ -136,4 +165,4 @@ function mergeGlyphRects(glyphs) {
   }
   return rows.map(({group,explicitGroup,lastWidth,lastCharIndex,...row})=>row);
 }
-module.exports = { tokensAtRange, spansFromIDs, validRect, pageGlyphs, concatenateGeometry, mapGeometry, sourceGeometryFromCaptures, mergeGlyphRects };
+module.exports = { tokensAtRange, spansFromIDs, validRect, pageGlyphs, concatenateGeometry, mapGeometry, mapGeometryLoose, sourceGeometryFromCaptures, mergeGlyphRects };

@@ -5,7 +5,7 @@ const ALPHA = /[A-Za-zÀ-ɏ]/, DIGIT = /[0-9]/;
 /** True when two neighbouring characters belong to one word or one number. */
 function joined(a, b) { return (ALPHA.test(a) && ALPHA.test(b)) || (DIGIT.test(a) && DIGIT.test(b)); }
 const TERM = /[A-Za-z0-9][A-Za-z0-9.\-\/]*[A-Za-z0-9]|[A-Za-z0-9]/g;
-const ABBR = /(?:^|[^A-Za-z])(?:Fig|Figs|Eq|Eqs|Ref|Refs|No|Nos|Dr|Mr|Mrs|Ms|Prof|vs|etc|al|approx|ca|cf|e\.g|i\.e|St|Vol|pp|Suppl|Tab|[A-Za-z])$/;
+const ABBR = /(?:^|[^A-Za-z])(?:Fig|Figs|Eq|Eqs|Ref|Refs|No|Nos|Dr|Mr|Mrs|Ms|Prof|vs|etc|al|approx|ca|cf|e\.g|i\.e|St|Vol|pp|Suppl|Tab)$|(?:^|[\s(\[])[A-Za-z]$/;
 
 function isCJK(text) { return /[぀-ヿ㐀-鿿가-힯]/.test(text); }
 

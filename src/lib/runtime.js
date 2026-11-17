@@ -86,6 +86,7 @@ class Companion {
     this.drag = null; this.active = null; this.pointer = null; this.shownKey = '';
     this.hotUntil = 0; this.timer = null; this.wantTimer = null; this.paneID = null;
     this.hovering = false; this.hover = { moves: 0, points: 0, hits: 0 }; this.ctrlTimer = null; this.leaveTimer = null;
+    this.lastSelected = '';
   }
   t(key) { return TEXT[key][this.zh ? 1 : 0]; }
   on() { return this.prefs.enabled && !this.paused; }
@@ -345,6 +346,7 @@ class Companion {
         if (error?.name === 'AbortError') return;
         state.card?.remove();
         state.capError = String(error?.message || 'PDF_COORDS'); this.log('capture', error);
+        this.trace('capture', { error: state.capError });
         return;
       }
       if (ctl.signal.aborted || this.disposed) return;
@@ -535,16 +537,18 @@ class Companion {
     if (!r.items.length) {
       this.clearHighlights();
       if (letterCount(p.result, a, b)) record.indicator.set(this.t('none'));
+      this.selected(p, 'outside');
       return;
     }
     this.want(p, r.need, () => this.note(record, r.need));
     if (!this.drag && b - a <= 12) for (const m of r.miss) this.aligner.lookup(p, m.g, 't', m.lo, m.hi, () => this.refresh(p));
     this.note(record, [...r.need, ...r.miss.map(m => m.g)]);
-    if (!p.geometry) { record.indicator.set(this.t('nogeo'), state.capError); return; }
+    if (!p.geometry) { record.indicator.set(this.t('nogeo'), state.capError); this.selected(p, 'no-coords', state.capError); return; }
     const ranges = A.mergeRanges(r.items.map(i => ({ a: i.s[0], b: i.s[1], coarse: i.coarse })), p.raw);
     const glyphs = A.glyphsForRanges(ranges, p.geometry.map);
-    if (!glyphs.length) { record.indicator.set(this.t('nogeo')); return; }
+    if (!glyphs.length) { record.indicator.set(this.t('nogeo')); this.selected(p, 'no-glyphs'); return; }
     const key = p.key + '|t|' + ranges.map(x => x.a + '-' + x.b + (x.coarse ? 'c' : '')).join(',');
+    if (!this.drag) this.selected(p, ranges.some(x => x.coarse) ? 'sentence' : 'word');
     if (this.shownKey !== key) {
       this.shownKey = key;
       for (const s of this.readers.values()) if (s !== state && s.pdf.glyphs.length) s.pdf.clear();
@@ -557,6 +561,13 @@ class Companion {
       if (ok) state.pdf.clearTemporary(); else record.indicator.set(this.t('nomark'), state.pdf.lastAnnotationError);
       return ok;
     });
+  }
+  /** One log line per outcome of selecting in the translation. */
+  selected(p, state, error) {
+    const mark = p.key + state;
+    if (this.lastSelected === mark) return;
+    this.lastSelected = mark;
+    this.trace('select', { state, coords: p.geometry ? Math.round(p.geometry.ratio * 100) : 0, ...(error ? { error } : {}) });
   }
   /** PDF word under the pointer -> translation. */
   showReverse(record, offset, intent) {

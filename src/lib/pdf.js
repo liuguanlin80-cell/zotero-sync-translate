@@ -287,7 +287,7 @@ class PDFAdapter {
       if (best?.score >= 2) break;
     }
     if (!best?.geometry) throw new Error(lastError || 'PDF_SELECTION_UNAVAILABLE');
-    if (best.score < 1) throw new Error('PDF_SELECTION_TEXT_MISMATCH');
+    if (best.score < 1 && canonical(best.geometry.text).value.length < expected.length * 0.5) throw new Error('PDF_SELECTION_TEXT_MISMATCH');
     this.lastView = best.entry;
     return { text, geometry:best.geometry, stamp:Date.now(), method:best.candidate.kind,
       signature: JSON.stringify(best.candidate.ranges.map(r => [r.pageIndex, r.start, r.end, r.rects])) };

@@ -3,8 +3,9 @@
     "sync-translate-companion@local.zotero": {
       "updates": [
         {
-          "version": "0.5.0",
-          "update_link": "https://github.com/liuguanlin80-cell/zotero-sync-translate/releases/download/v0.5.0/sync-translate-0.5.0.xpi",
+          "version": "0.5.1",
+          "update_hash": "sha256:988b097c0a8d4c4dbc567bf129941438e702e40c454b2fb997b491bda96775b3",
+          "update_link": "https://github.com/liuguanlin80-cell/zotero-sync-translate/releases/download/v0.5.1/sync-translate-0.5.1.xpi",
           "applications": {
             "zotero": {
               "strict_min_version": "9.999",
