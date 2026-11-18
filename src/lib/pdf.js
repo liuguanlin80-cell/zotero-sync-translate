@@ -305,23 +305,31 @@ class PDFAdapter {
       .find(e => typeof e.view?._onAddAnnotation === 'function' && !safeGet(() => e.view._readOnly, false));
     return entry ? a => entry.view._onAddAnnotation(a, false) : null;
   }
+  /** Zotero's nextPageRects always means pageIndex + 1, so each annotation covers one page or two adjacent ones. */
   async createPermanentHighlight(glyphs, color, text = '') {
     const rows = mergeGlyphRects(glyphs || []), pages = [...new Set(rows.map(r => r.pageIndex))].sort((x, y) => x - y);
-    if (!rows.length || pages.length > 2 || !ANNOTATION_COLORS.some(x => x[1] === color)) { this.lastAnnotationError = 'ANNOTATION_UNSUPPORTED_RANGE'; return false; }
+    if (!rows.length || pages.length > 6 || !ANNOTATION_COLORS.some(x => x[1] === color)) { this.lastAnnotationError = 'ANNOTATION_UNSUPPORTED_RANGE'; return false; }
     const write = this.annotationWriter(), entry = this.lastView || this.views[0];
     if (!write || !entry) { this.lastAnnotationError = 'ANNOTATION_WRITER_UNAVAILABLE'; return false; }
+    const runs = [];
+    for (const page of pages) {
+      const last = runs[runs.length - 1];
+      if (last && last.length === 1 && last[0] + 1 === page) last.push(page); else runs.push([page]);
+    }
     try {
-      const pageIndex = pages[0], pageRows = rows.filter(r => r.pageIndex === pageIndex);
-      const first = (glyphs || []).filter(g => g.pageIndex === pageIndex).reduce((m, g) => !m || g.charIndex < m.charIndex ? g : m, null);
-      const page = safeGet(() => entry.app.pdfViewer.getPageView(pageIndex), null);
-      const viewBox = safeGet(() => page.viewport.viewBox, null) || safeGet(() => page.pdfPage.view, null);
-      const position = { pageIndex, rects: pageRows.map(r => Array.from(r.rect)) };
-      if (pages[1] !== undefined) position.nextPageRects = rows.filter(r => r.pageIndex === pages[1]).map(r => Array.from(r.rect));
-      const annotation = { type: 'highlight', color, position, text: String(text || ''),
-        sortIndex: sortIndexFor(pageIndex, first?.charIndex || 0, pageRows[0]?.rect || first?.rect, viewBox),
-        pageLabel: String(safeGet(() => entry.view?._getPageLabel(pageIndex, true), pageIndex + 1)) };
-      const readerWin = safeGet(() => unwrap(this.reader?._iframeWindow), null);
-      await Promise.resolve(write(readerWin ? toRealm(annotation, readerWin) : annotation));
+      for (const run of runs) {
+        const pageIndex = run[0], pageRows = rows.filter(r => r.pageIndex === pageIndex);
+        const first = (glyphs || []).filter(g => g.pageIndex === pageIndex).reduce((m, g) => !m || g.charIndex < m.charIndex ? g : m, null);
+        const page = safeGet(() => entry.app.pdfViewer.getPageView(pageIndex), null);
+        const viewBox = safeGet(() => page.viewport.viewBox, null) || safeGet(() => page.pdfPage.view, null);
+        const position = { pageIndex, rects: pageRows.map(r => Array.from(r.rect)) };
+        if (run[1] !== undefined) position.nextPageRects = rows.filter(r => r.pageIndex === run[1]).map(r => Array.from(r.rect));
+        const annotation = { type: 'highlight', color, position, text: String(text || ''),
+          sortIndex: sortIndexFor(pageIndex, first?.charIndex || 0, pageRows[0]?.rect || first?.rect, viewBox),
+          pageLabel: String(safeGet(() => entry.view?._getPageLabel(pageIndex, true), pageIndex + 1)) };
+        const readerWin = safeGet(() => unwrap(this.reader?._iframeWindow), null);
+        await Promise.resolve(write(readerWin ? toRealm(annotation, readerWin) : annotation));
+      }
       this.lastAnnotationError = ''; return true;
     } catch (error) { this.lastAnnotationError = String(error?.message || 'ANNOTATION_WRITE_FAILED'); return false; }
   }

@@ -224,7 +224,7 @@ async function post(Z, url, headers, body, timeout) {
 }
 
 function groupKey(p, g) {
-  return hash(['5', p.langfrom, p.langto, p.raw.slice(g.s[0], g.s[1]), p.result.slice(g.t[0], g.t[1])].join('\u0001'));
+  return hash(['6', p.langfrom, p.langto, p.raw.slice(g.s[0], g.s[1]), p.result.slice(g.t[0], g.t[1])].join('\u0001'));
 }
 
 /** Installs links (offsets relative to the group) as the group's fine alignment. */
@@ -244,7 +244,7 @@ function weak(token, lang) {
 class Aligner {
   constructor(Zotero, tfz, store, prefs, trace) {
     this.Z = Zotero; this.tfz = tfz; this.store = store; this.prefs = prefs; this.trace = trace || (() => {});
-    this.queue = []; this.active = 0; this.plain = new Set(); this.disposed = false;
+    this.queue = []; this.active = 0; this.plain = new Set(); this.disposed = false; this.reserved = 0;
   }
   spec(p) {
     const prefs = this.prefs(), mode = prefs.alignSource;
@@ -307,7 +307,7 @@ class Aligner {
       }
       this.trace('lookup', { word, answer: answer.slice(0, 40), found: found.length, ms: Date.now() - started });
     } catch (e) {
-      g.asked.set(key, Date.now());
+      g.asked.set(key, e?.message === 'CAP' ? 'done' : Date.now());
       this.trace('lookup', { word, error: String(e?.message || 'FAILED'), ms: Date.now() - started });
     } finally {
       g.looking--;
@@ -324,7 +324,8 @@ class Aligner {
       for (const l of links) this.store.learn(p.langfrom + '>' + p.langto, sText.slice(l[0], l[1]), tText.slice(l[2], l[3]));
       this.trace('align', { links: links.length, chars: sText.length, ms: Date.now() - started });
     } catch (e) {
-      g.failAt = Date.now(); g.note = 'fail'; g.error = String(e?.message || 'FAILED');
+      g.error = String(e?.message || 'FAILED');
+      if (g.error === 'CAP') g.note = 'cap'; else { g.failAt = Date.now(); g.note = 'fail'; }
       this.trace('align', { error: g.error, chars: sText.length, ms: Date.now() - started });
       safeGet(() => this.Z.debug('[SyncTranslate] align failed: ' + g.error));
     } finally {
@@ -337,10 +338,19 @@ class Aligner {
     const words = A.tokenize(sText).filter(t => t.word).length;
     const answer = await this.ask(spec, A.alignPrompt(sText, tText), Math.min(2000, 120 + 14 * words));
     const checked = A.verifyPairs(sText, tText, A.parsePairs(answer));
-    if (checked.rejected) this.trace('rejected', { pairs: checked.rejected, kept: checked.links.length });
+    if (checked.rejected) this.trace('rejected', { pairs: checked.rejected, kept: checked.links.length, sample: checked.missed.map(x => x.slice(0, 60)) });
     return checked.links;
   }
+  /** Runs one request if the daily cap allows it, holding its likely cost until the real count arrives. */
+  async metered(estimate, send) {
+    if (!this.store.allowed(this.reserved)) throw new Error('CAP');
+    this.reserved += estimate;
+    try { return await send(); } finally { this.reserved -= estimate; }
+  }
   async ask(spec, prompt, cap) {
+    return this.metered(Math.ceil(prompt.length / 2) + (cap || 400), () => this.send(spec, prompt, cap));
+  }
+  async send(spec, prompt, cap) {
     const id = spec.url + '|' + spec.model;
     let data, req = buildRequest(spec, prompt, !this.plain.has(id), cap);
     try { data = await post(this.Z, spec.url, req.headers, req.body, 12000); }
@@ -371,7 +381,7 @@ class Aligner {
       target_sentence: { text: tText, words: tw.map(t => [t.id, t.text]) },
       alignment_rule: 'For every Noul, return P(true) ONLY when source_focus and target_focus are direct bilingual alignment counterparts in this sentence context. Do NOT mark two tokens true merely because they occur in the same phrase or clause. Prefer a sparse matrix. Untranslated tokens may have no true edge.'
     } };
-    const data = await post(this.Z, spec.url, { 'Content-Type': 'application/json', Authorization: 'Bearer ' + spec.secret }, body, 12000);
+    const data = await this.metered(count * 4, () => post(this.Z, spec.url, { 'Content-Type': 'application/json', Authorization: 'Bearer ' + spec.secret }, body, 12000));
     this.store.spend(usageOf(data));
     const cells = [], rowMax = new Map(), colMax = new Map();
     for (const [key, answer] of Object.entries(data?.answers || {})) {

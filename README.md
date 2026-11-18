@@ -77,6 +77,7 @@ node build.js              # 生成 dist/sync-translate-<版本>.xpi 和 update.
 node test/align.test.js
 node test/plugin.test.js
 node test/geom.test.js
+node test/pdf.test.js
 ```
 
 源码在 `src/lib`：`align.js` 分句、配对和校验，`provider.js` 读取 TFZ 配置并请求模型，`runtime.js` 处理 Zotero 里的事件。

@@ -336,6 +336,77 @@ async function test(name, fn) { await fn(); passed++; console.log('ok  ' + name)
     c.shutdown();
   });
 
+  await test('a new selection without PDF coordinates hides the palette, and an old palette cannot write', async () => {
+    const w = world();
+    const c = w.api.start(w.Zotero, {}, w.env);
+    w.Zotero.HTTP.answer = ANSWER;
+    const s = stage(w, c);
+    let writes = 0;
+    s.pdf.createPermanentHighlight = async () => { writes++; return true; };
+    const palette = s.record.palette = { action: null, hidden: 0, show(sel, fn) { this.action = fn; }, hide() { this.action = null; this.hidden++; }, dispose() {} };
+    c.aligner.ensure(s.p, s.p.groups[0]);
+    await tick(30);
+    const at = ZH.indexOf('抑制剂');
+    s.surface.sel = { start: at, end: at + 3 };
+    c.syncSelection(s.record);
+    const old = palette.action;
+    assert(old && s.pdf.shown, 'palette shown for a selection with coordinates');
+    // "the mechanism" has no coordinates
+    const m = EN.indexOf('the mechanism');
+    for (let i = m; i < m + 13; i++) s.p.geometry.map[i] = [];
+    const at2 = ZH.indexOf('机制');
+    s.surface.sel = { start: at2, end: at2 + 2 };
+    c.syncSelection(s.record);
+    assert.strictEqual(palette.action, null, 'palette hidden');
+    assert.strictEqual(s.pdf.shown, null, 'old highlight cleared');
+    assert.strictEqual(await old('#ffd400'), false, 'old palette refuses');
+    assert.strictEqual(writes, 0);
+    c.shutdown();
+  });
+
+  await test('the daily cap holds when several requests are queued at once', async () => {
+    const w = world({ [OWN + 'capDaily']: 100 });
+    const c = w.api.start(w.Zotero, {}, w.env);
+    w.Zotero.HTTP.answer = ANSWER;
+    const real = w.Zotero.HTTP.request;
+    w.Zotero.HTTP.request = async (...a) => { await tick(20); return real(...a); };
+    const groups = [];
+    for (let k = 0; k < 5; k++) {
+      const raw = 'Sentence number ' + k + ' about cells.', result = '第' + k + '句关于细胞。';
+      const p = c.passage(state(), { ...task, id: 'cap' + k, raw, result });
+      c.aligner.ensure(p, p.groups[0]); groups.push(p.groups[0]);
+    }
+    await tick(120);
+    assert.strictEqual(w.requests.length, 1, 'requests sent: ' + w.requests.length);
+    assert.strictEqual(groups.filter(g => g.note === 'cap').length, 4);
+    c.shutdown();
+  });
+
+  await test('coordinates covering part of a passage are replaced when a fuller selection arrives', async () => {
+    const w = world();
+    const c = w.api.start(w.Zotero, {}, w.env);
+    const page = text => ({ text, map: [...text].map((ch, i) => ch === ' ' ? null : { pageIndex: 0, charIndex: i, rect: [i, 0, i + 1, 10] }) });
+    const st = state(), half = EN.slice(0, 60);
+    st.captures.push({ text: half, geometry: page(half) });
+    const p = c.passage(st, task);
+    assert(p.geometry && p.geometry.ratio < 0.6, 'first only part: ' + (p.geometry && p.geometry.ratio));
+    st.captures.push({ text: EN, geometry: page(EN) }); st.capRev = 1;
+    c.geo(p);
+    assert.strictEqual(p.geometry.ratio, 1);
+    c.shutdown();
+  });
+
+  await test('pointing at a function word never asks the model about it alone', async () => {
+    const w = world({ [OWN + 'reverse']: true, [OWN + 'reverseCtrl']: true });
+    const c = w.api.start(w.Zotero, {}, w.env);
+    w.Zotero.HTTP.answer = prompt => prompt.includes('[[') ? '-' : ANSWER;
+    const s = stage(w, c);
+    s.over('with', true);
+    await tick(40);
+    assert(!w.requests.some(r => r.body.messages[0].content.includes('[[with]]')));
+    c.shutdown();
+  });
+
   await test('endpoint normalisation matches TFZ', async () => {
     const { normalizeEndpoint } = world().api.provider;
     assert.strictEqual(normalizeEndpoint('https://api.openai.com/v1', ''), 'https://api.openai.com/v1/chat/completions');

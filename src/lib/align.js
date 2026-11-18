@@ -163,7 +163,10 @@ function norm(text) {
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
     if (/\s/.test(c)) {
-      if (v && v[v.length - 1] !== ' ') { v += ' '; map.push(i); }
+      // "XBP1 剪接" and "XBP1剪接" are the same text; only spaces between non-Chinese words count.
+      let next = i + 1;
+      while (next < text.length && /\s/.test(text[next])) next++;
+      if (v && v[v.length - 1] !== ' ' && !isCJK(v[v.length - 1]) && !isCJK(text[next] || '')) { v += ' '; map.push(i); }
       continue;
     }
     const n = c.normalize('NFKC').toLowerCase()
@@ -225,7 +228,7 @@ function verifyLookup(text, answer, hint) {
 function parsePairs(answer) {
   const text = String(answer || '').replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '').replace(/```[a-z]*\n?/gi, '');
   const sep = text.includes('|||') ? '|||' : text.includes('\t') ? '\t' : ' = ';
-  const clean = x => x.trim().replace(/^[-*•]\s+/, '').replace(/^["'“”「」`]+|["'“”「」`]+$/g, '').trim();
+  const clean = x => x.trim().replace(/^(?:[-*•]|\d{1,3}[.)、])\s*/, '').replace(/^["'“”「」`]+|["'“”「」`]+$/g, '').trim();
   const out = [];
   for (const line of text.split(/\r?\n/)) {
     const at = line.indexOf(sep);
@@ -258,9 +261,10 @@ function verifyPairs(sText, tText, pairs) {
     return all[marked[2] - 1] ? [all[marked[2] - 1]] : literal.length ? literal : all;
   };
   let rejected = 0;
+  const missed = [];
   for (const [sp, tp] of pairs) {
     const sOcc = places(hs, sText, sp), tOcc = places(ht, tText, tp);
-    if (!sOcc.length || !tOcc.length) { rejected++; continue; }
+    if (!sOcc.length || !tOcc.length) { rejected++; if (missed.length < 4) missed.push((sOcc.length ? '' : '?') + sp + ' | ' + (tOcc.length ? '' : '?') + tp); continue; }
     if (sOcc.length === 1 && tOcc.length === 1) {
       if (!freeS(sOcc[0]) || !freeT(tOcc[0])) rejected++;
       else if (!whole(sOcc[0], tOcc[0])) links.push([sOcc[0][0], sOcc[0][1], tOcc[0][0], tOcc[0][1]]);
@@ -295,12 +299,17 @@ function verifyPairs(sText, tText, pairs) {
   }
   let covered = 0;
   for (const l of links) covered += letterCount(tText, l[2], l[3]);
-  return { links, rejected, coverage: nt ? covered / nt : 0 };
+  return { links, rejected, missed, coverage: nt ? covered / nt : 0 };
 }
 
 const BREAK = /[,;:，；：。.!?！？()（）、]/;
 
 /** A short run of short words ("of the", "that were", "的"): function words, not content left out by the model. */
+const FUNCTION_WORDS = new Set(('a an the of to in on at by for from with as and or but nor so than that this these those ' +
+  'which who whom whose what is are was were be been being has have had do does did it its into onto via per not no').split(' '));
+/** A word that carries no meaning of its own, so asking the model about it alone is wasted. */
+function functionWord(word) { return FUNCTION_WORDS.has(String(word || '').toLowerCase()); }
+
 function minor(run) {
   if (isCJK(run)) return /^[的地得了着过们]$/.test(run);
   const words = run.split(/\s+/);
@@ -439,5 +448,5 @@ function candidateLink(p, g, a, b, candidates) {
   return null;
 }
 
-module.exports = { isCJK, tokenize, sentences, pairSentences, segment, norm, findAll, alignPrompt, parsePairs, lookupPrompt, verifyLookup,
+module.exports = { functionWord, isCJK, tokenize, sentences, pairSentences, segment, norm, findAll, alignPrompt, parsePairs, lookupPrompt, verifyLookup,
   verifyPairs, resolve, mergeRanges, glyphsForRanges, candidatesFrom, candidateLink };

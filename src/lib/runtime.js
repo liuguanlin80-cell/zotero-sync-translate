@@ -145,16 +145,22 @@ class Companion {
     this.loop();
     return this;
   }
+  /** The only place a polling timer is set, so there is never more than one. */
+  schedule(ms) {
+    clearTimeout(this.timer);
+    this.timer = this.disposed ? null : setTimeout(() => this.loop(), ms);
+  }
   loop() {
     if (this.disposed) return;
-    this.tick();
-    this.timer = setTimeout(() => this.loop(), Date.now() < this.hotUntil ? 80 : 400);
+    this.looping = true;
+    try { this.tick(); } finally { this.looping = false; }
+    this.schedule(Date.now() < this.hotUntil ? 80 : 400);
   }
   /** Check often for a few seconds: a selection was made or a translation is running. */
   heat(ms = 4000) {
     const wasHot = Date.now() < this.hotUntil;
     this.hotUntil = Math.max(this.hotUntil, Date.now() + ms);
-    if (!wasHot && !this.disposed) { clearTimeout(this.timer); this.timer = setTimeout(() => this.loop(), 30); }
+    if (!wasHot && !this.looping) this.schedule(30);
   }
 
   isPDF(reader) { return safeGet(() => reader.type || reader._type, 'pdf') === 'pdf'; }
@@ -301,10 +307,12 @@ class Companion {
     return p;
   }
   geo(p) {
-    if (p.geometry) return true;
+    const rev = p.state.capRev || 0;
+    if (p.geometry && (p.geometry.ratio >= 1 || p.geoRev === rev)) return true;
+    p.geoRev = rev;
     const geometry = sourceGeometryFromCaptures(p.raw, p.state.captures);
-    if (!geometry) return false;
-    p.geometry = geometry; p.inverse = new Map(); p.pages = new Set(); p.hit = null;
+    if (!geometry || (p.geometry && geometry.ratio <= p.geometry.ratio)) return !!p.geometry;
+    p.geometry = geometry; p.inverse = new Map(); p.pages = new Set(); p.hit = null; this.shownKey = '';
     geometry.map.forEach((glyphs, offset) => {
       for (const g of glyphs) {
         const key = g.pageIndex + ':' + g.charIndex;
@@ -365,7 +373,7 @@ class Companion {
       }
       if (ctl.signal.aborted || this.disposed) return;
       state.captures = state.captures.filter(c => c.signature !== capture.signature);
-      state.captures.push(capture);
+      state.captures.push(capture); state.capRev = (state.capRev || 0) + 1;
       while (state.captures.length > 16) state.captures.shift();
       state.capError = '';
       const hit = short && this.enclosing(state, capture);
@@ -555,12 +563,12 @@ class Companion {
       return;
     }
     this.want(p, r.need, () => this.note(record, r.need));
-    if (!this.drag && b - a <= 12) for (const m of r.miss) this.aligner.lookup(p, m.g, 't', m.lo, m.hi, () => this.refresh(p));
+    if (!this.drag && b - a <= 12) for (const m of r.miss) if (!A.functionWord(p.result.slice(m.lo, m.hi))) this.aligner.lookup(p, m.g, 't', m.lo, m.hi, () => this.refresh(p));
     this.note(record, [...r.need, ...r.miss.map(m => m.g)]);
-    if (!p.geometry) { record.indicator.set(this.t('nogeo'), state.capError); this.selected(p, 'no-coords', state.capError); return; }
+    if (!p.geometry) { this.dropShown(record); record.indicator.set(this.t('nogeo'), state.capError); this.selected(p, 'no-coords', state.capError); return; }
     const ranges = A.mergeRanges(r.items.map(i => ({ a: i.s[0], b: i.s[1], coarse: i.coarse })), p.raw);
     const glyphs = A.glyphsForRanges(ranges, p.geometry.map);
-    if (!glyphs.length) { record.indicator.set(this.t('nogeo')); this.selected(p, 'no-glyphs'); return; }
+    if (!glyphs.length) { this.dropShown(record); record.indicator.set(this.t('nogeo')); this.selected(p, 'no-glyphs'); return; }
     const key = p.key + '|t|' + ranges.map(x => x.a + '-' + x.b + (x.coarse ? 'c' : '')).join(',');
     if (!this.drag) this.selected(p, ranges.some(x => x.coarse) ? 'sentence' : 'word');
     if (this.shownKey !== key) {
@@ -571,10 +579,18 @@ class Companion {
     if (this.drag) { record.palette.hide(); return; }
     const quote = ranges.map(x => p.raw.slice(x.a, x.b)).join(' … ');
     record.palette.show(record.surface.selection(), async color => {
+      // Only for the selection this highlight was worked out for.
+      const now = record.surface.selection();
+      if (!now || now.start !== a || now.end !== b) { this.syncSelection(record); return false; }
       const ok = await state.pdf.createPermanentHighlight(glyphs, color, quote);
       if (ok) state.pdf.clearTemporary(); else record.indicator.set(this.t('nomark'), state.pdf.lastAnnotationError);
       return ok;
     });
+  }
+  dropShown(record) {
+    this.shownKey = '';
+    record.palette.hide();
+    record.passage.state.pdf.clearTemporary();
   }
   /** One log line per outcome of selecting in the translation. */
   selected(p, state, error) {
@@ -592,7 +608,7 @@ class Companion {
     if (!r.items.length) { if (this.shownKey) this.clearHighlights(); return; }
     if (intent) {
       this.want(p, r.need, () => this.note(record, r.need));
-      for (const m of r.miss) this.aligner.lookup(p, m.g, 's', token.start, token.end, () => this.refresh(p));
+      if (!A.functionWord(token.text)) for (const m of r.miss) this.aligner.lookup(p, m.g, 's', token.start, token.end, () => this.refresh(p));
       this.note(record, [...r.need, ...r.miss.map(m => m.g)]);
     }
     const key = p.key + '|s|' + token.start + '|' + r.items.map(i => i.t[0] + '-' + i.t[1] + (i.coarse ? 'c' : '')).join(',');

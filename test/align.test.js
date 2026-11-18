@@ -282,6 +282,20 @@ test('links replaced by new ones at the same positions do not break resolving', 
   assert.deepStrictEqual(sText(p, A.resolve(p, 't', at, at + 3).items), ['the inhibitor']);
 });
 
+test('a space the model adds between Chinese and Latin text still matches', () => {
+  const v = A.verifyPairs('XBP1 splicing rose sharply.', 'XBP1剪接急剧增加。', [['XBP1 splicing', 'XBP1 剪接'], ['rose', '增加']]);
+  assert.strictEqual(v.links.length, 2);
+});
+
+test('numbered answer lines are read', () => {
+  assert.deepStrictEqual(A.parsePairs('1. drug ||| 药物\n2) mice ||| 小鼠\n3、 safe ||| 安全'), [['drug', '药物'], ['mice', '小鼠'], ['safe', '安全']]);
+});
+
+test('rejected pairs are reported for the log', () => {
+  const v = A.verifyPairs('Cells died.', '细胞死亡。', [['Cells', '细胞'], ['neurons', '神经元']]);
+  assert.deepStrictEqual(v.missed, ['?neurons | ?神经元']);
+});
+
 test('the prompt states the rules the local check relies on', () => {
   const prompt = A.alignPrompt('a', 'b');
   for (const rule of ['|||', 'exactly', '#2', 'articles', 'Never pair a clause']) assert(prompt.includes(rule), rule);

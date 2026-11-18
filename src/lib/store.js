@@ -118,7 +118,8 @@ class Store {
     const total = this.used() + tokens;
     safeGet(() => { this.Z.Prefs.set(PREFIX + 'usedDay', this.today(), true); this.Z.Prefs.set(PREFIX + 'usedToday', total, true); });
   }
-  allowed() { const cap = Number(this.pref('capDaily', 0)) || 0; return !cap || this.used() < cap; }
+  /** pending: tokens of requests already sent but not yet counted. */
+  allowed(pending = 0) { const cap = Number(this.pref('capDaily', 0)) || 0; return !cap || this.used() + pending < cap; }
   dispose() {
     if (this.timer) this.env.clearTimeout(this.timer);
     if (this.logTimer) this.env.clearTimeout(this.logTimer);
