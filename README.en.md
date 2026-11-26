@@ -70,7 +70,7 @@ Go to **Edit → Settings → Sync Translate**.
 
 ## Plugin missing after restarting Zotero?
 
-If Zotero cannot read a plugin file at startup, it can uninstall the plugin. For example, antivirus software might temporarily lock the file during a scan. Reinstall the plugin if this happens. If antivirus locking is confirmed, the Zotero data directory's `extensions` folder is where Zotero stores the installed plugin files.
+If Zotero cannot read a plugin file at startup, it can uninstall the plugin. For example, antivirus software might temporarily lock the file during a scan. Reinstall the plugin if this happens. Zotero stores installed plugin files in the `extensions` folder inside your [Zotero profile directory](https://www.zotero.org/support/kb/profile_directory).
 
 ## Development
 
